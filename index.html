@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나노다공성 백금 CGM 알고리즘 R&D 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 기본 폰트 및 부드러운 스크롤 */
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc; /* Slate 50 */
+            color: #334155; /* Slate 700 */
+        }
+        
+        /* <!-- Chosen Palette: Medical Minimalist -->
+        <!-- Background: Slate 50 (#f8fafc), Surface: White, Primary: Blue 600 (#2563eb), Secondary: Teal 500 (#14b8a6), Accent: Rose 500 (#f43f5e) -->
+        */
+
+        /* Chart Container Styling: 반응형 및 크기 제한 적용 */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* 모바일 기본 높이 */
+            max-height: 400px;
+        }
+
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px; /* 데스크톱 높이 */
+            }
+        }
+
+        /* 탭 전환 애니메이션 */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 커스텀 스크롤바 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+    <!-- Application Structure Plan: 
+    1. Navigation (Top): 4개의 주요 섹션으로 이동 (개요, 신호 열화 분석, 알고리즘 파이프라인, AI 고도화 제안).
+    2. Section 1 (Overview): 프로젝트 목표와 5가지 주요 문제점을 카드 형태로 직관적으로 요약.
+    3. Section 2 (Degradation Analysis): 15일간의 착용 기간 동안 발생하는 베이스라인/감도 저하, 노이즈를 Chart.js 시뮬레이션으로 비교 분석. (인터랙션: 데이터 셋 토글)
+    4. Section 3 (Algorithm Pipeline): 사용자가 제안한 LUT + 필터링 방식의 실행 계획을 단계별 블록(Tailwind)으로 시각화.
+    5. Section 4 (AI/ML): 신경망 학습 도입을 위한 구체적인 아키텍처 제안 (LSTM, Autoencoder 등)을 텍스트와 레이아웃 구조로 보고.
+    이유: 연구자가 현재 직면한 물리화학적 문제를 먼저 데이터로 확인하고(Sec 2), 본인이 고안한 1차 솔루션을 검증한 뒤(Sec 3), 최종 목표인 AI 고도화(Sec 4)로 자연스럽게 사고가 이어지도록 구성함.
+    -->
+    <!-- Visualization & Content Choices:
+    - Goal: 물리적 한계점(열화, 노이즈) 시각화 -> Method: Chart.js Line Chart (15일 시뮬레이션 데이터) -> Justification: 시간에 따른 감쇠와 노이즈 발생을 원본 혈당과 직관적으로 비교하기 위함 (NO SVG).
+    - Goal: 알고리즘 설계 구조도 표현 -> Method: HTML/Tailwind Grid 기반 플로우 다이어그램 -> Justification: 외부 이미지나 Mermaid 없이 텍스트와 박스 모델만으로 깔끔한 프로세스 흐름 전달.
+    - Goal: LUT(룩업테이블) 개념 설명 -> Method: Chart.js Multi-axis Line Chart -> Justification: 시간 경과에 따른 베이스라인과 감도의 변화 추이를 수치적으로 보여줌.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="antialiased">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl mr-2">🩸</span>
+                    <span class="font-bold text-xl text-slate-800 tracking-tight">CGM AlgoLab</span>
+                </div>
+                <div class="flex space-x-1 sm:space-x-4 items-center overflow-x-auto whitespace-nowrap px-2">
+                    <button onclick="switchTab('overview')" id="btn-overview" class="tab-btn px-3 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">📌 개요 및 과제</button>
+                    <button onclick="switchTab('analysis')" id="btn-analysis" class="tab-btn px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent">📉 신호 열화 분석</button>
+                    <button onclick="switchTab('pipeline')" id="btn-pipeline" class="tab-btn px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent">⚙️ 1차 알고리즘 (LUT)</button>
+                    <button onclick="switchTab('ai')" id="btn-ai" class="tab-btn px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent">🧠 AI/ML 고도화</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Section 1: Overview -->
+        <section id="overview" class="tab-content active">
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-slate-900 mb-4">나노다공성 Pt 기반 CGM 신호 처리 알고리즘 개발</h1>
+                <p class="text-lg text-slate-600 leading-relaxed">
+                    본 대시보드는 15일 연속 착용을 목표로 하는 나노다공성 백금 전극 기반 CGM(연속혈당측정기)의 알고리즘 개발 현황과 계획을 담고 있습니다. 
+                    전극에서 측정된 <strong>원시 전류(Current, nA)</strong>를 정확한 <strong>혈당값(Glucose, mg/dL)</strong>으로 실시간 변환하기 위해 극복해야 할 5가지 주요 물리화학적 난제를 정의하고, 이를 해결하기 위한 통계적 룩업테이블(LUT) 및 필터링 적용 방안을 제시합니다.
+                </p>
+            </div>
+
+            <h2 class="text-xl font-semibold text-slate-800 mb-6 border-l-4 border-blue-500 pl-3">알고리즘 개발 시 고려해야 할 5대 난제</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Card 1 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-3">📉</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">1. 베이스라인의 변화 (Shift)</h3>
+                    <p class="text-sm text-slate-600">착용 시간이 경과함에 따라 동일 혈당임에도 측정 전류의 영점이 하락. 외부막 바이오 파울링, 전극 피독, 바인더 스웰링 현상이 주 원인으로 추정됨.</p>
+                </div>
+                <!-- Card 2 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-3">🔋</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">2. 감도 (Sensitivity) 저하</h3>
+                    <p class="text-sm text-slate-600">글루코스 변화량 대비 전류 변화량(기울기)이 15일에 걸쳐 점진적으로 감소. 포도당 확산 제한 및 전극 활성도 저하가 주요 원인.</p>
+                </div>
+                <!-- Card 3 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-3">🌡️</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">3. 온도의 영향</h3>
+                    <p class="text-sm text-slate-600">온도 상승 시 외부막 스웰링 증가로 인한 확산 촉진 및 센서 활성도 변화. 특히 스웰링에 의한 확산 증가 효과가 지배적임.</p>
+                </div>
+                <!-- Card 4 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-3">⏳</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">4. 생리학적 지연 (Time Lag)</h3>
+                    <p class="text-sm text-slate-600">간질액(ISF)의 혈당과 손끝 모세혈관 혈당 간의 불일치. 혈당 급변 시 측정 신호의 위상 지연(Lag) 현상 발생.</p>
+                </div>
+                <!-- Card 5 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-3">⚡</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">5. 물리적 노이즈 / 아티팩트</h3>
+                    <p class="text-sm text-slate-600">센서 고정 불안정, 사용자의 격렬한 움직임, 회로 연결 불량 등으로 인한 비정상적인 순간 전류 튀는 현상 (Spike).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Analysis -->
+        <section id="analysis" class="tab-content">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-3">15일 착용 시뮬레이션: 신호 열화 양상</h2>
+                <p class="text-slate-600">
+                    아래 차트는 15일 동안 센서를 착용했을 때의 이상적인 실제 혈당(True BG)과, 앞서 언급된 <strong>베이스라인 변화, 감도 저하, 노이즈, 생리학적 지연</strong>이 모두 반영된 원시 전류 신호(Raw Current)의 시뮬레이션 데이터를 보여줍니다. 
+                    버튼을 클릭하여 각 현상의 영향을 직접 확인해보세요.
+                </p>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-8">
+                <div class="flex flex-wrap gap-2 mb-4 justify-center">
+                    <button onclick="updateSimChart('ideal')" class="px-4 py-2 text-sm rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium transition-colors">🩸 이상적인 혈당 변화</button>
+                    <button onclick="updateSimChart('raw')" class="px-4 py-2 text-sm rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200 font-medium transition-colors">⚠️ 측정된 원시 전류 (열화+노이즈)</button>
+                    <button onclick="updateSimChart('compare')" class="px-4 py-2 text-sm rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium transition-colors">📊 스케일 보정 후 비교 (Lag & Error 확인)</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="simChart"></canvas>
+                </div>
+                <div class="mt-4 p-4 bg-slate-50 rounded-lg text-sm text-slate-600">
+                    <p id="sim-explanation"><strong>🩸 이상적인 혈당 변화:</strong> 측정에 아무런 오류나 지연이 없을 때 체내의 실제 모세혈관 혈당 곡선입니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Algorithm Pipeline -->
+        <section id="pipeline" class="tab-content">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-3">실행 계획: LUT와 필터를 융합한 1차 알고리즘</h2>
+                <p class="text-slate-600">
+                    기기 구동 리소스를 최소화하면서도 신뢰성 있는 결과를 도출하기 위해, 사전 통계 분석 기반의 <strong>Lookup Table (LUT)</strong> 적용 후 <strong>후처리 필터링</strong>을 수행하는 2단계 파이프라인 구조를 제안합니다.
+                </p>
+            </div>
+
+            <!-- Flow Diagram (Tailwind grid) -->
+            <div class="bg-slate-900 rounded-xl p-6 mb-8 text-white relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">⚙️</div>
+                <h3 class="font-bold text-lg text-blue-300 mb-6">Real-time Calculation Flow</h3>
+                
+                <div class="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 md:space-x-4">
+                    <!-- Step 1 -->
+                    <div class="flex-1 w-full bg-slate-800 border border-slate-700 rounded-lg p-4 text-center z-10">
+                        <div class="text-teal-400 font-bold mb-2">Step 1: Raw Input</div>
+                        <div class="text-sm text-slate-300">실시간 전류 측정 (I_raw)<br>온도 측정 (T)</div>
+                    </div>
+                    <div class="text-2xl text-slate-500 hidden md:block">▶</div>
+                    <div class="text-2xl text-slate-500 md:hidden">▼</div>
+                    
+                    <!-- Step 2 -->
+                    <div class="flex-1 w-full bg-blue-900 border border-blue-700 rounded-lg p-4 text-center z-10 shadow-[0_0_15px_rgba(37,99,235,0.3)]">
+                        <div class="text-blue-300 font-bold mb-2">Step 2: LUT Calibration</div>
+                        <div class="text-xs text-slate-300 mb-2 bg-slate-800 p-1 rounded font-mono">BG = (I_raw - Base(t,T)) / Sens(t,T)</div>
+                        <div class="text-[11px] text-slate-400">사전 분석된 장착 경과시간(t) 및 온도(T) 기반 베이스라인/감도 보상</div>
+                    </div>
+                    <div class="text-2xl text-slate-500 hidden md:block">▶</div>
+                    <div class="text-2xl text-slate-500 md:hidden">▼</div>
+
+                    <!-- Step 3 -->
+                    <div class="flex-1 w-full bg-teal-900 border border-teal-700 rounded-lg p-4 text-center z-10 shadow-[0_0_15px_rgba(20,184,166,0.2)]">
+                        <div class="text-teal-300 font-bold mb-2">Step 3: Signal Filtering</div>
+                        <div class="text-xs text-slate-300 mb-2">
+                            <span class="bg-teal-800 px-1 rounded">Median/Kalman</span> 노이즈 제거<br>
+                            <span class="bg-teal-800 px-1 rounded">ARMA</span> ISF-모세혈관 위상 보상
+                        </div>
+                    </div>
+                    <div class="text-2xl text-slate-500 hidden md:block">▶</div>
+                    <div class="text-2xl text-slate-500 md:hidden">▼</div>
+
+                    <!-- Step 4 -->
+                    <div class="flex-1 w-full bg-slate-800 border border-slate-700 rounded-lg p-4 text-center z-10">
+                        <div class="text-green-400 font-bold mb-2">Final Output</div>
+                        <div class="text-sm text-slate-300 text-2xl font-bold">124 <span class="text-xs font-normal">mg/dL</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LUT Explanation -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h3 class="font-bold text-slate-800 mb-3 text-lg border-b pb-2">1. 시간/온도 기반 룩업테이블 (LUT) 구축</h3>
+                    <p class="text-sm text-slate-600 mb-4">
+                        수백 명의 임상 데이터를 바탕으로 착용 시간(Day 1 ~ 15)과 피부 표면 온도 변화에 따른 <strong>감쇠 곡선(Decay Curve)</strong>을 모델링합니다. 알고리즘은 복잡한 연산 없이 현재 시간의 테이블 값을 참조하여 전류값을 1차 변환합니다.
+                    </p>
+                    <div class="chart-container" style="height: 200px;">
+                        <canvas id="lutChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h3 class="font-bold text-slate-800 mb-3 text-lg border-b pb-2">2. 아티팩트 제거 및 Lag 보상 필터</h3>
+                    <ul class="text-sm text-slate-600 space-y-3">
+                        <li class="flex items-start">
+                            <span class="text-rose-500 mr-2">▪</span>
+                            <div>
+                                <strong>비정상 신호(Spike) 제거:</strong> 
+                                급격한 움직임이나 연결 불량으로 인한 순간적 노이즈는 혈당의 생리적 변화 속도(최대 ~3mg/dL/min)를 초과합니다. 
+                                <span class="text-blue-600 font-semibold">이동 중앙값 필터(Moving Median Filter)</span>나 속도 제한 로직(Rate Limiter)을 적용하여 임계값을 넘는 신호를 버리거나 보간합니다.
+                            </div>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-2">▪</span>
+                            <div>
+                                <strong>생리학적 지연(Time Lag) 보상:</strong> 
+                                간질액(ISF)과 모세혈관의 혈당 차이는 모델링을 통해 보정 가능합니다. 칼만 필터(Kalman Filter)를 이용하여 측정 오차를 최소화하거나, 1차 혹은 2차 차분 방정식을 이용해 혈당의 변화 추세를 예측(Prediction)하여 화면 표시 값을 현재 모세혈관 혈당에 가깝게 당겨옵니다.
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: AI/ML -->
+        <section id="ai" class="tab-content">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-3">AI / 신경망(Neural Network) 도입 고도화 방안 제안</h2>
+                <p class="text-slate-600">
+                    전통적인 수식 및 테이블 기반의 알고리즘(LUT)은 리소스 소모가 적고 예측 가능하지만, 개인별 체질 편차나 예상치 못한 센서의 미세 변화를 완벽하게 커버하기 어렵습니다. 이를 고도화하기 위한 머신러닝/딥러닝 아키텍처를 제안합니다.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- AI Model 1 -->
+                <div class="bg-white rounded-xl shadow-sm border border-t-4 border-t-indigo-500 p-6 flex flex-col h-full">
+                    <div class="text-indigo-500 text-3xl mb-4">🔄</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">1. LSTM / GRU 기반 시계열 예측</h3>
+                    <div class="text-sm text-slate-600 flex-grow">
+                        <p class="mb-2"><strong>적용 목표:</strong> 생리학적 지연(Lag) 완벽 보상 및 미래 혈당 추이 예측.</p>
+                        <p><strong>원리:</strong> 과거 n분 간의 원시 전류 파형, 온도, 그리고 계산된 혈당 변화율을 순환신경망(RNN) 계열인 LSTM에 입력합니다. 시계열 데이터의 장기 의존성을 학습하여, 현재 ISF 전류값이 모세혈관에서는 어떤 혈당값일지 위상 지연을 스스로 학습하고 보상합니다.</p>
+                    </div>
+                    <div class="mt-4 bg-indigo-50 text-indigo-700 text-xs p-2 rounded">
+                        * 장점: 급격한 혈당 상승/하강 구간의 정확도 극대화
+                    </div>
+                </div>
+
+                <!-- AI Model 2 -->
+                <div class="bg-white rounded-xl shadow-sm border border-t-4 border-t-rose-500 p-6 flex flex-col h-full">
+                    <div class="text-rose-500 text-3xl mb-4">🔬</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">2. Autoencoder 아티팩트 감지</h3>
+                    <div class="text-sm text-slate-600 flex-grow">
+                        <p class="mb-2"><strong>적용 목표:</strong> 움직임, 회로 불안정으로 인한 비정상 노이즈(Spike)의 지능적 제거.</p>
+                        <p><strong>원리:</strong> 정상적인 혈당 변화 곡선만으로 Autoencoder 신경망을 학습시킵니다. 실시간 신호가 입력될 때, 복원 오차(Reconstruction Error)가 비정상적으로 크면 이를 아티팩트로 간주하여 제거하고, 신경망이 복원해낸 매끄러운 곡선 값으로 대체합니다.</p>
+                    </div>
+                    <div class="mt-4 bg-rose-50 text-rose-700 text-xs p-2 rounded">
+                        * 장점: 기존 통계 필터로 잡기 힘든 모호한 노이즈까지 식별
+                    </div>
+                </div>
+
+                <!-- AI Model 3 -->
+                <div class="bg-white rounded-xl shadow-sm border border-t-4 border-t-teal-500 p-6 flex flex-col h-full">
+                    <div class="text-teal-500 text-3xl mb-4">🧠</div>
+                    <h3 class="font-bold text-lg text-slate-800 mb-2">3. PINN (물리정보 신경망)</h3>
+                    <div class="text-sm text-slate-600 flex-grow">
+                        <p class="mb-2"><strong>적용 목표:</strong> 센서 열화(바이오 파울링, 피독, 스웰링)의 개인화된 실시간 보정.</p>
+                        <p><strong>원리:</strong> 순수 데이터 기반 학습의 과적합(Overfitting)을 막기 위해 손실 함수(Loss function)에 Fick의 확산 법칙과 반응 역학(Kinetics) 미분 방정식을 결합합니다. 온도 스웰링에 의한 확산 증가 현상을 물리 방정식이 통제하므로 매우 적은 데이터로도 강건한(Robust) 알고리즘 생성이 가능합니다.</p>
+                    </div>
+                    <div class="mt-4 bg-teal-50 text-teal-700 text-xs p-2 rounded">
+                        * 장점: 나노다공성 백금 전극의 화학적 특성을 알고리즘에 직접 내재화
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="mt-8 bg-slate-800 rounded-xl p-6 text-white shadow-lg">
+                <h3 class="font-bold text-lg text-emerald-400 mb-3">🚀 AI 도입을 위한 Action Plan</h3>
+                <ol class="list-decimal list-inside text-sm text-slate-300 space-y-2">
+                    <li><strong>데이터 수집 인프라 구축:</strong> 15일 착용 임상 실험 시 원시 전류(10초 단위), 온도, 그리고 10분 단위의 모세혈관 채혈 데이터(Reference)를 페어링하여 대규모 DB 화.</li>
+                    <li><strong>하이브리드 아키텍처 설계:</strong> 스마트폰 앱(Edge)단에서는 가벼운 LUT+필터를 우선 구동하고, 클라우드 연결 시 수집된 데이터를 바탕으로 개인화된 파라미터를 역산출하여 펌웨어나 앱의 파라미터를 업데이트(Federated Learning 개념).</li>
+                    <li><strong>경량화 딥러닝 모델 개발:</strong> 1D-CNN 방식이나 경량화된 TCN(Temporal Convolutional Network) 모델을 개발하여 스마트폰 앱 내부 프로세서만으로도 실시간 추론이 가능하도록 최적화.</li>
+                </ol>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- 1. Navigation Logic ---
+        function switchTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            // Reset button styles
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('text-blue-600', 'border-blue-600');
+                el.classList.add('text-slate-500', 'border-transparent');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            // Highlight selected button
+            const btn = document.getElementById('btn-' + tabId);
+            btn.classList.remove('text-slate-500', 'border-transparent');
+            btn.classList.add('text-blue-600', 'border-blue-600');
+        }
+
+        // --- 2. Data Simulation Logic ---
+        // 15 days = 360 hours (simulate data points every 1 hour for viz simplicity)
+        const days = 15;
+        const pointsPerHour = 1;
+        const totalPoints = days * 24 * pointsPerHour;
+        
+        const labels = Array.from({length: totalPoints}, (_, i) => `Day ${(i/24).toFixed(1)}`);
+        
+        // Base True BG: Fluctuating curve (simulating meals/fasting)
+        let trueBG = [];
+        for (let i = 0; i < totalPoints; i++) {
+            // Base 100, add sine waves for daily patterns + random walk
+            let val = 100 + 40 * Math.sin(i * Math.PI / 12) + 20 * Math.sin(i * Math.PI / 3);
+            val = Math.max(70, Math.min(250, val)); // Cap values
+            trueBG.push(val);
+        }
+
+        // Degradation parameters over time
+        let rawCurrent = [];
+        let filteredEstBG = [];
+        
+        for (let i = 0; i < totalPoints; i++) {
+            const timeRatio = i / totalPoints; // 0 to 1
+            
+            // 1. Baseline Shift: Starts at 20nA, decays to 5nA
+            const baseline = 20 - (15 * Math.pow(timeRatio, 0.8)); 
+            
+            // 2. Sensitivity: Starts at 1.5 nA per mg/dL, decays to 0.6
+            const sensitivity = 1.5 - (0.9 * Math.pow(timeRatio, 0.9));
+            
+            // 3. ISF Lag: Read BG from slightly earlier time points
+            const lagIdx = Math.max(0, i - 2); // lag by 2 hours in this coarse scale
+            const isfBG = trueBG[lagIdx];
+            
+            // 4. Noise & Artifacts: Random spikes
+            let noise = (Math.random() - 0.5) * 5;
+            if (Math.random() < 0.05) noise += 40 * (Math.random() > 0.5 ? 1 : -1); // 5% chance of big spike
+            
+            // Calculate Raw Current
+            const current = (isfBG * sensitivity) + baseline + noise;
+            rawCurrent.push(current);
+        }
+
+        // --- 3. Chart Implementations ---
+        let simChartObj = null;
+
+        function initCharts() {
+            // Chart.js Default styling
+            Chart.defaults.font.family = "'Pretendard', sans-serif";
+            Chart.defaults.color = '#64748b';
+
+            // --- LUT Calibration Chart ---
+            const lutCtx = document.getElementById('lutChart').getContext('2d');
+            new Chart(lutCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Day 1', 'Day 3', 'Day 6', 'Day 9', 'Day 12', 'Day 15'],
+                    datasets: [
+                        {
+                            label: '감도 (Sensitivity, nA/mg/dL)',
+                            data: [1.5, 1.3, 1.0, 0.85, 0.7, 0.6],
+                            borderColor: '#3b82f6', // blue-500
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: '베이스라인 (Baseline, nA)',
+                            data: [20, 16, 11, 8, 6, 5],
+                            borderColor: '#14b8a6', // teal-500
+                            yAxisID: 'y1',
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', labels: { boxWidth: 12, usePointStyle: true } }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Sensitivity'} },
+                        y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: {display: true, text: 'Baseline'} }
+                    }
+                }
+            });
+
+            // Initialize Main Simulation Chart with 'ideal' data
+            updateSimChart('ideal');
+        }
+
+        function updateSimChart(mode) {
+            const ctx = document.getElementById('simChart').getContext('2d');
+            const explanation = document.getElementById('sim-explanation');
+            
+            let datasets = [];
+            
+            if (mode === 'ideal') {
+                datasets = [{
+                    label: 'True Capillary BG (mg/dL)',
+                    data: trueBG,
+                    borderColor: '#f43f5e', // rose-500
+                    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 0,
+                    tension: 0.4
+                }];
+                explanation.innerHTML = "<strong>🩸 이상적인 혈당 변화:</strong> 측정에 아무런 오류나 지연이 없을 때 체내의 실제 모세혈관 혈당 곡선입니다. 안정적인 패턴을 보입니다.";
+            } else if (mode === 'raw') {
+                datasets = [
+                    {
+                        label: 'Raw Current (nA)',
+                        data: rawCurrent,
+                        borderColor: '#64748b', // slate-500
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ];
+                explanation.innerHTML = "<strong>⚠️ 측정된 원시 전류 (열화+노이즈):</strong> 15일 경과에 따라 <strong>베이스라인과 감도가 하락</strong>하여 전체적인 신호 레벨이 0에 가깝게 붕괴되며, 간헐적인 센서 노이즈(Spike)가 보입니다.";
+            } else if (mode === 'compare') {
+                // To compare, scale Raw Current roughly to BG scale for visual overlay
+                const scaledCurrent = rawCurrent.map(c => c * 1.2 + 20); 
+                datasets = [
+                    {
+                        label: 'True Capillary BG (mg/dL)',
+                        data: trueBG,
+                        borderColor: '#f43f5e',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Uncalibrated Signal Scaled (mg/dL equiv)',
+                        data: scaledCurrent,
+                        borderColor: '#94a3b8',
+                        borderWidth: 1.5,
+                        borderDash: [3, 3],
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ];
+                explanation.innerHTML = "<strong>📊 스케일 보정 후 비교:</strong> 원시 신호를 단순 스케일링하여 혈당과 비교해보면, 후반부로 갈수록 <strong>값의 오차(열화)</strong>가 커지고 급격한 변화 시 <strong>위상 지연(Lag)</strong>이 발생하는 것을 명확히 알 수 있습니다. 이 격차를 좁히는 것이 알고리즘의 목표입니다.";
+            }
+
+            if (simChartObj) {
+                simChartObj.destroy();
+            }
+
+            simChartObj = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', labels: { usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    // Wrap labels longer than 16 chars logic (as requested, though Chartjs handles auto wrap, we format cleanly)
+                                    let label = context.dataset.label || '';
+                                    if (label.length > 16) label = label.substring(0, 16) + '...';
+                                    return `${label}: ${context.parsed.y.toFixed(1)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            ticks: { maxTicksLimit: 15 },
+                            grid: { display: false }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            title: { display: true, text: mode === 'raw' ? 'Current (nA)' : 'Glucose (mg/dL)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+        });
+
+    </script>
+</body>
+</html>
